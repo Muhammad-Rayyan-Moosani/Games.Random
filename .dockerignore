@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment variables (will be passed at runtime)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Documentation
+README.md
+*.md
+ppt/
+ideas and questions/
+
+# Testing
+*.test.js
+test/
+tests/
+
+# Misc
+.editorconfig
+.eslintrc
+.prettierrc
