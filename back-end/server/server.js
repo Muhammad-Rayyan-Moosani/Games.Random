@@ -164,9 +164,8 @@ app.use(passport.session());
  * Daily Rate Limiter for Game Generation
  * Limits users to 3 game generations per 24 hours based on IP address
  * Prevents abuse and manages API costs
- * TEMPORARILY DISABLED FOR TESTING
  */
-/* const dailyGameLimit = rateLimit({
+const dailyGameLimit = rateLimit({
     windowMs: 24 * 60 * 60 * 1000, // 24 hours
     max: 3, // Limit each IP to 3 requests per windowMs
     message: {
@@ -199,7 +198,7 @@ app.use(passport.session());
         // You can add logic here to skip rate limiting for premium users
         return false;
     }
-}); */
+});
 
 // ========== PASSPORT CONFIGURATION ==========
 
@@ -535,7 +534,7 @@ app.delete('/api/games/:gameId', requireAuth, async (req, res) => {
  * @param {string} req.body.library - Game library ('p5js' or 'phaser')
  * @returns {Object} Generated game code and metadata
  */
-app.post('/api/generate', /* dailyGameLimit, */ async (req, res) => {
+app.post('/api/generate', dailyGameLimit, async (req, res) => {
     try {
         const { description, library } = req.body;
 
@@ -607,7 +606,7 @@ app.post('/api/generate', /* dailyGameLimit, */ async (req, res) => {
  * @param {string} req.body.library - Game library ('p5js' or 'phaser')
  * @returns {Stream} SSE stream of code chunks
  */
-app.post('/api/generate-stream', /* dailyGameLimit, */ async (req, res) => {
+app.post('/api/generate-stream', dailyGameLimit, async (req, res) => {
     try {
         const { description, library } = req.body;
 
