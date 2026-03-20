@@ -23,9 +23,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>games.random - AI Game Generator</title>
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/jpeg" href="G_R_favicon.jpg" />
-
   <!-- Google Fonts: Inter for UI text, JetBrains Mono for code display -->
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
@@ -198,20 +195,13 @@
     }
 
     /**
-     * G.R Logo Icon
-     * Custom logo image before text
+     * Play Icon
+     * Decorative play button before logo
      */
     .logo::before {
-      content: "";
-      display: inline-block;
-      width: 32px;
-      height: 32px;
-      background-image: url('G_R.jpg');
-      background-size: contain;
-      background-repeat: no-repeat;
-      background-position: center;
-      margin-right: 8px;
-      vertical-align: middle;
+      content: "▶";
+      font-size: 0.75em;
+      color: #00ff88;
     }
 
     .logo-highlight {
