@@ -1,15 +1,12 @@
 <!--
   games.random - Main Application Interface
   
-  AI-powered 2D game generator with real-time streaming, user authentication,
-  and game library management.
-  
+  AI-powered 2D game generator with real-time streaming.
+
   Features:
   - Natural language game description input
   - Library selection (p5.js or Phaser 3)
   - Real-time code streaming with Server-Sent Events
-  - Google OAuth authentication
-  - Save and manage generated games
   - Responsive dark theme UI
   
   @author Shayan Mazahir, Mohammad Samin, Rayyan Moosani
@@ -167,17 +164,6 @@
       margin-bottom: 6px;
     }
 
-    /**
-     * User Section
-     * Authentication controls and user info display
-     */
-    .user-section {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      flex-shrink: 0;
-      align-self: flex-start;
-    }
 
     /**
      * Logo Styling
@@ -637,21 +623,6 @@
       transform: translateY(-1px);
     }
 
-    /**
-     * Login Button Variant
-     * Highlighted with brand color
-     */
-    .user-section .btn {
-      background: rgba(0, 255, 136, 0.1);
-      border-color: rgba(0, 255, 136, 0.3);
-      color: #00ff88;
-    }
-
-    .user-section .btn:hover {
-      background: rgba(0, 255, 136, 0.2);
-      border-color: rgba(0, 255, 136, 0.5);
-      box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
-    }
 
     /* ========== LOADING SPINNER ========== */
 
@@ -777,25 +748,6 @@
         <div class="mini-tagline">
           Describe a game → choose a library → get playable code you can study.
         </div>
-      </div>
-
-      <!-- User authentication section -->
-      <div class="user-section" id="userSection">
-        <!-- Logged-in user info (hidden by default) -->
-        <div id="userInfo" style="display: none; align-items: center;">
-          <img id="userAvatar"
-            style="width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; border: 2px solid #00ff88;">
-          <span id="userName" style="margin-right: 15px; color: #e0e0e0; font-weight: 500;"></span>
-          <button class="btn" onclick="showMyGames()"
-            style="padding: 6px 12px; font-size: 0.8em; margin-right: 5px; background: rgba(0, 255, 136, 0.1); border-color: rgba(0, 255, 136, 0.3);">My
-            Games</button>
-          <button class="btn" onclick="logout()" style="padding: 6px 12px; font-size: 0.8em;">Logout</button>
-        </div>
-        <!-- Login button (shown when not authenticated) -->
-        <button id="loginButton" class="btn" onclick="login()"
-          style="display: none; padding: 8px 16px; background: rgba(0, 255, 136, 0.1); border-color: rgba(0, 255, 136, 0.3);">
-          <span style="margin-right: 8px;">🔐</span> Sign in with Google
-        </button>
       </div>
     </div>
 
@@ -1030,32 +982,6 @@
               } else if (data.type === 'complete') {
                 streamStatus.innerHTML = `✅ Complete! Generated in ${data.totalTime}s • ${data.chunks} chunks • ${data.tokens} tokens`;
 
-                // Auto-save for authenticated users
-                (async () => {
-                  try {
-                    const authResponse = await fetch('/auth/current-user');
-                    const authData = await authResponse.json();
-
-                    if (authData.user) {
-                      const title = description.substring(0, 50) + (description.length > 50 ? '...' : '');
-                      console.log('💾 Attempting to auto-save game...');
-
-                      const saveResult = await saveGame(title, description, data.code, library);
-
-                      if (saveResult.success) {
-                        console.log('✅ Game auto-saved successfully!');
-                        streamStatus.innerHTML += ' • 💾 Saved';
-                      } else {
-                        console.error('❌ Failed to auto-save:', saveResult.error);
-                      }
-                    } else {
-                      console.log('ℹ️ Not logged in, skipping auto-save');
-                    }
-                  } catch (error) {
-                    console.error('❌ Auto-save error:', error);
-                  }
-                })();
-
                 // Save to session storage and redirect to play page
                 setTimeout(() => {
                   sessionStorage.setItem("editedGameCode", data.code);
@@ -1158,223 +1084,6 @@ The game should:
       }
     });
 
-    /**
-     * ========== AUTHENTICATION FUNCTIONS ==========
-     */
-
-    /**
-     * Check Current Authentication Status
-     * Updates UI to show login button or user info
-     */
-    async function checkAuth() {
-      try {
-        const response = await fetch('/auth/current-user');
-        const data = await response.json();
-
-        if (data.user) {
-          showUserInfo(data.user);
-        } else {
-          showLoginButton();
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        showLoginButton();
-      }
-    }
-
-    /**
-     * Display User Information
-     * @param {Object} user - User object with name, avatar, etc.
-     */
-    function showUserInfo(user) {
-      document.getElementById('userInfo').style.display = 'flex';
-      document.getElementById('loginButton').style.display = 'none';
-      document.getElementById('userAvatar').src = user.avatar;
-      document.getElementById('userName').textContent = user.name;
-    }
-
-    /**
-     * Show Login Button
-     * Displayed when user is not authenticated
-     */
-    function showLoginButton() {
-      document.getElementById('userInfo').style.display = 'none';
-      document.getElementById('loginButton').style.display = 'block';
-    }
-
-    /**
-     * Initiate Google OAuth Login
-     */
-    function login() {
-      window.location.href = '/auth/google';
-    }
-
-    /**
-     * Log Out Current User
-     */
-    function logout() {
-      window.location.href = '/auth/logout';
-    }
-
-    /**
-     * ========== GAME SAVING FUNCTIONS ==========
-     */
-
-    /**
-     * Save Game to User's Account
-     * @param {string} title - Game title
-     * @param {string} description - Game description
-     * @param {string} code - Generated game code
-     * @param {string} library - Library used (p5js or phaser)
-     * @returns {Object} Save result with success status
-     */
-    async function saveGame(title, description, code, library) {
-      try {
-        const response = await fetch('/api/save-game', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description, code, library })
-        });
-
-        const data = await response.json();
-        return data;
-      } catch (error) {
-        console.error('Error saving game:', error);
-        return { success: false, error: error.message };
-      }
-    }
-
-    /**
-     * Display My Games Modal
-     * Shows list of user's saved games
-     */
-    async function showMyGames() {
-      try {
-        const response = await fetch('/api/my-games');
-        const data = await response.json();
-
-        if (data.success) {
-          displayGamesList(data.games);
-          document.getElementById('myGamesModal').style.display = 'flex';
-        }
-      } catch (error) {
-        console.error('Error loading games:', error);
-      }
-    }
-
-    /**
-     * Close My Games Modal
-     */
-    function closeMyGames() {
-      document.getElementById('myGamesModal').style.display = 'none';
-    }
-
-    /**
-     * Render Games List in Modal
-     * @param {Array} games - Array of saved game objects
-     */
-    function displayGamesList(games) {
-      const container = document.getElementById('gamesList');
-
-      if (games.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No saved games yet. Generate a game and save it!</p>';
-        return;
-      }
-
-      container.innerHTML = games.map(game => `
-    <div class="game-item" style="background: rgba(30, 30, 30, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; margin-bottom: 10px;">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div style="flex: 1;">
-          <h4 style="margin: 0 0 5px 0; color: #00ff88;">${game.title}</h4>
-          <p style="margin: 0 0 8px 0; color: #aaa; font-size: 0.9em;">${game.description}</p>
-          <div style="display: flex; gap: 10px; font-size: 0.8em; color: #666;">
-            <span>Library: ${game.library}</span>
-            <span>Created: ${new Date(game.createdAt).toLocaleDateString()}</span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 5px;">
-          <button class="btn" onclick="loadGame('${game.id}')" style="padding: 6px 12px; font-size: 0.8em;">Load</button>
-          <button class="btn" onclick="deleteGame('${game.id}', '${game.title.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 0.8em; background: rgba(220, 38, 38, 0.1);">Delete</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
-    }
-
-    /**
-     * Load Game from Saved Games
-     * @param {string} gameId - MongoDB ObjectId of game to load
-     */
-    async function loadGame(gameId) {
-      try {
-        const response = await fetch('/api/my-games');
-        const data = await response.json();
-
-        if (data.success) {
-          const game = data.games.find(g => g.id === gameId);
-          if (game) {
-            // Store in session and redirect to play page
-            sessionStorage.setItem('editedGameCode', game.code);
-            sessionStorage.setItem('gameLibrary', game.library);
-            window.location.href = 'play.html';
-          }
-        }
-      } catch (error) {
-        console.error('Error loading game:', error);
-      }
-    }
-
-    // Track game to delete
-    let gameToDelete = null;
-
-    /**
-     * Show Delete Confirmation Modal
-     * @param {string} gameId - Game ID to delete
-     * @param {string} gameTitle - Game title for confirmation message
-     */
-    function deleteGame(gameId, gameTitle) {
-      gameToDelete = gameId;
-      document.getElementById('deleteGameTitle').textContent = gameTitle;
-      document.getElementById('deleteConfirmModal').style.display = 'flex';
-    }
-
-    /**
-     * Close Delete Confirmation Modal
-     */
-    function closeDeleteModal() {
-      document.getElementById('deleteConfirmModal').style.display = 'none';
-      gameToDelete = null;
-    }
-
-    /**
-     * Confirm and Execute Game Deletion
-     */
-    async function confirmDelete() {
-      if (!gameToDelete) return;
-
-      const deleteBtn = document.getElementById('confirmDeleteBtn');
-      deleteBtn.textContent = 'Deleting...';
-      deleteBtn.disabled = true;
-      deleteBtn.style.opacity = '0.6';
-
-      try {
-        const response = await fetch(`/api/games/${gameToDelete}`, { method: 'DELETE' });
-        const data = await response.json();
-
-        if (data.success) {
-          deleteBtn.textContent = '✓ Deleted!';
-          deleteBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-
-          setTimeout(() => {
-            closeDeleteModal();
-            showMyGames(); // Refresh games list
-          }, 800);
-        }
-      } catch (error) {
-        console.error('Error deleting game:', error);
-        deleteBtn.textContent = '✗ Failed';
-      }
-    }
 
     /**
      * Update Rate Limit Display
@@ -1402,58 +1111,11 @@ The game should:
      * ========== INITIALIZE ON PAGE LOAD ==========
      */
     document.addEventListener('DOMContentLoaded', () => {
-      checkAuth();
       // Set initial rate limit display
       document.getElementById('rateLimitValue').textContent = '3/3 left';
     });
 
   </script>
-
-  <!-- ========== MY GAMES MODAL ========== -->
-  <div id="myGamesModal" class="modal"
-    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; align-items: center; justify-content: center;">
-    <div class="modal-content"
-      style="background: rgba(20, 20, 20, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 0; max-width: 600px; width: 90%; max-height: 80vh; overflow: hidden;">
-      <div class="modal-header"
-        style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="margin: 0; color: #00ff88;">🎮 My Saved Games</h2>
-        <button class="btn" onclick="closeMyGames()"
-          style="background: none; border: none; color: #e0e0e0; font-size: 1.2em; cursor: pointer;">✕</button>
-      </div>
-      <div class="modal-body" style="padding: 20px; max-height: 60vh; overflow-y: auto;">
-        <div id="gamesList">
-          <!-- Games list populated by JavaScript -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========== DELETE CONFIRMATION MODAL ========== -->
-  <div id="deleteConfirmModal" class="modal"
-    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; align-items: center; justify-content: center;">
-    <div class="delete-modal-content"
-      style="background: linear-gradient(135deg, rgba(30, 30, 30, 0.98), rgba(20, 20, 20, 0.98)); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 12px; padding: 0; max-width: 450px; width: 90%; box-shadow: 0 20px 60px rgba(220, 38, 38, 0.3);">
-      <div class="modal-header"
-        style="padding: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 1.5em;">🗑️</span>
-        <h2 style="margin: 0; color: #ff6b6b; font-size: 1.2em;">Delete Game?</h2>
-      </div>
-      <div class="modal-body" style="padding: 24px;">
-        <p style="color: #d0d0d0; margin: 0 0 8px 0; line-height: 1.6;">
-          Are you sure you want to delete <strong id="deleteGameTitle" style="color: #fff;"></strong>?
-        </p>
-        <p style="color: #999; margin: 0; font-size: 0.9em;">This action cannot be undone.</p>
-      </div>
-      <div class="modal-footer"
-        style="padding: 20px 24px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px; justify-content: flex-end;">
-        <button onclick="closeDeleteModal()"
-          style="padding: 10px 20px; background: rgba(60, 60, 60, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #e0e0e0; font-size: 0.95em; cursor: pointer; font-family: inherit; font-weight: 500;">Cancel</button>
-        <button id="confirmDeleteBtn" onclick="confirmDelete()"
-          style="padding: 10px 20px; background: linear-gradient(135deg, #dc2626, #b91c1c); border: none; border-radius: 8px; color: #fff; font-size: 0.95em; cursor: pointer; font-family: inherit; font-weight: 600; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">Delete
-          Game</button>
-      </div>
-    </div>
-  </div>
 </body>
 
 </html>
