@@ -1,17 +1,8 @@
-/**
- * games.random - Express API Server
- *
- * RESTful API server for AI game generation with real-time streaming capabilities.
- *
- * Features:
- * - AI game generation (standard and streaming)
- * - Interactive code assistant chatbot
- * - Rate limiting for API requests
- *
- * @module server
- * @author Shayan Mazahir, Rayyan Moosani
- * @license GPL-3.0-or-later
- */
+// This is the main server file that handles all web requests
+// It's an Express server with three main jobs:
+// 1. Generate games (with AI streaming)
+// 2. Let users chat about their code
+// 3. Serve the frontend files
 
 import express from 'express';
 import cors from 'cors';
@@ -21,52 +12,38 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-
-// Load environment variables from .env file
 dotenv.config();
 
 const app = express();
 
-// ========== CONFIGURATION ==========
-
-// ES module path resolution (required for __dirname in ES modules)
+// Figure out file paths (needed for ES modules)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Environment variables with fallback defaults
+// Use environment port or default to 3000
 const PORT = process.env.PORT || 3000;
 
-
-// ========== MIDDLEWARE ==========
-
-/**
- * CORS configuration - Allow cross-origin requests
- */
+// Allow requests from any origin (needed for local dev)
 app.use(cors({
-    origin: true  // Allow all origins (configure stricter for production)
+    origin: true
 }));
 
-// Parse JSON request bodies
+// Let Express parse JSON in request bodies
 app.use(express.json());
 
-// ========== RATE LIMITING ==========
-
-/**
- * Daily Rate Limiter for Game Generation
- * Limits users to 3 game generations per 24 hours based on IP address
- * Prevents abuse and manages API costs
- */
+// Rate limiter - stops people from spamming the API
+// Limits each IP to 3 games per day (resets after 24 hours)
 const dailyGameLimit = rateLimit({
-    windowMs: 24 * 60 * 60 * 1000, // 24 hours
-    max: 3, // Limit each IP to 3 requests per windowMs
+    windowMs: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+    max: 3, // 3 requests per day
     message: {
         success: false,
         error: 'Daily limit reached',
         message: 'You have reached your daily limit of 3 game generations. Please try again in 24 hours.',
-        resetTime: null // Will be set dynamically
+        resetTime: null
     },
-    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-    legacyHeaders: false, // Disable `X-RateLimit-*` headers
+    standardHeaders: true,
+    legacyHeaders: false,
     handler: (req, res) => {
         const resetTime = new Date(req.rateLimit.resetTime);
         const now = new Date();
@@ -84,21 +61,13 @@ const dailyGameLimit = rateLimit({
             hoursUntilReset: hoursLeft
         });
     },
-    // Skip rate limiting for authenticated users (optional future enhancement)
     skip: (req) => {
-        // You can add logic here to skip rate limiting for premium users
+        // Could add premium user logic here later
         return false;
     }
 });
 
-
-// ========== API ROUTES ==========
-
-/**
- * GET /api
- * API status and documentation endpoint
- * Shows server status and available endpoints
- */
+// Simple status page
 app.get('/api', (req, res) => {
     res.send(`
         <h1>🎮 games.random API Server</h1>
@@ -112,22 +81,13 @@ app.get('/api', (req, res) => {
     `);
 });
 
-/**
- * POST /api/generate
- * Generate game code using AI
- * Public endpoint - no authentication required
- * Rate limited to 3 generations per 24 hours per IP
- *
- * @param {Object} req.body - Request body
- * @param {string} req.body.description - Natural language game description
- * @param {string} req.body.library - Game library ('p5js' or 'phaser')
- * @returns {Object} Generated game code and metadata
- */
+// Main endpoint - generates a game from a description
+// Rate limited to 3 per day per IP
 app.post('/api/generate', dailyGameLimit, async (req, res) => {
     try {
         const { description, library } = req.body;
 
-        // Validate description
+        // Make sure they gave us a description
         if (!description) {
             return res.status(400).json({
                 success: false,
@@ -142,7 +102,7 @@ app.post('/api/generate', dailyGameLimit, async (req, res) => {
             });
         }
 
-        // Validate library
+        // Make sure they picked a valid library
         if (!library) {
             return res.status(400).json({
                 success: false,
@@ -160,7 +120,7 @@ app.post('/api/generate', dailyGameLimit, async (req, res) => {
 
         console.log(`🎮 Request: Generate ${normalizedLibrary} game: "${description}"`);
 
-        // Generate game code using AI
+        // Generate the game
         const startTime = performance.now();
         const gameCode = await generateGame(description, normalizedLibrary);
         const endTime = performance.now();
@@ -183,23 +143,13 @@ app.post('/api/generate', dailyGameLimit, async (req, res) => {
     }
 });
 
-/**
- * POST /api/generate-stream
- * Generate game code with real-time streaming
- * Uses Server-Sent Events (SSE) to stream code as it's generated
- * Public endpoint - no authentication required
- * Rate limited to 3 generations per 24 hours per IP
- *
- * @param {Object} req.body - Request body
- * @param {string} req.body.description - Natural language game description
- * @param {string} req.body.library - Game library ('p5js' or 'phaser')
- * @returns {Stream} SSE stream of code chunks
- */
+// Streaming endpoint - same as /generate but sends code in real-time
+// This is what the frontend actually uses because it feels faster
 app.post('/api/generate-stream', dailyGameLimit, async (req, res) => {
     try {
         const { description, library } = req.body;
 
-        // Validate input
+        // Quick validation
         if (!description || description.trim().length < 5) {
             return res.status(400).json({
                 success: false,
@@ -217,13 +167,13 @@ app.post('/api/generate-stream', dailyGameLimit, async (req, res) => {
 
         console.log(`⚡ Streaming request: ${normalizedLibrary} - "${description}"`);
 
-        // Set up Server-Sent Events headers
+        // Set up streaming headers (Server-Sent Events)
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        res.setHeader('X-Accel-Buffering', 'no');  // Disable nginx buffering
+        res.setHeader('X-Accel-Buffering', 'no');  // Don't buffer in nginx
 
-        // Stream game generation with callback for each chunk
+        // Generate and stream the code back
         await generateGameStreaming(description, normalizedLibrary, (data) => {
             res.write(`data: ${JSON.stringify(data)}\n\n`);
         });
@@ -240,22 +190,12 @@ app.post('/api/generate-stream', dailyGameLimit, async (req, res) => {
     }
 });
 
-/**
- * POST /api/chat
- * Interactive code assistant for modifying generated games
- * Public endpoint - no authentication required
- * 
- * @param {Object} req.body - Request body
- * @param {string} req.body.message - User's question or request
- * @param {string} req.body.gameCode - Current game code for context
- * @param {string} req.body.library - Game library being used
- * @returns {Object} AI assistant's response
- */
+// Chat endpoint - lets users ask questions about their generated code
 app.post('/api/chat', async (req, res) => {
     try {
         const { message, gameCode, library } = req.body;
 
-        // Validate message
+        // Make sure they sent a message
         if (!message || message.trim().length === 0) {
             return res.status(400).json({
                 success: false,
@@ -263,7 +203,7 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
-        // Validate context
+        // Make sure we have context
         if (!gameCode || !library) {
             return res.status(400).json({
                 success: false,
@@ -273,7 +213,7 @@ app.post('/api/chat', async (req, res) => {
 
         console.log(`💬 Chat request for ${library} game`);
 
-        // Get AI response
+        // Get Claude's help
         const reply = await chatWithCodeAssistant(message, gameCode, library);
 
         res.json({
@@ -290,20 +230,10 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// ========== STATIC FILE SERVING ==========
-
-/**
- * Serve frontend static files
- * Serves HTML, CSS, JS, and other assets from the front-end directory
- */
+// Serve all the frontend files (HTML, CSS, JS, images, etc.)
 app.use(express.static(path.join(__dirname, '../../front-end/public')));
 
-// ========== START SERVER ==========
-
-/**
- * Start Express server and listen on configured port
- * Displays startup information and configuration status
- */
+// Start the server
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📝 Ready to generate games!`);

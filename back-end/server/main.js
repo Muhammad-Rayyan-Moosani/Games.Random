@@ -1,13 +1,5 @@
-/**
- * games.random - AI Game Generator Core Module
- * 
- * This module handles AI-powered game code generation using Claude API.
- * Supports p5.js and Phaser game libraries with prompt caching for performance.
- * 
- * @module main
- * @author Shayan Mazahir
- * @license GPL-3.0-or-later
- */
+// This file handles all the AI magic - talking to Claude to generate game code
+// It's pretty simple: we send a description, Claude sends back code
 
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
@@ -15,15 +7,14 @@ import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Get the directory name of the current module (main.js)
+// Figure out where this file lives so we can find other files
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load environment variables from project root
-// Navigate up to project root and load .env
+// Load the API key from .env file
 dotenv.config({ path: join(__dirname, '../../.env') });
 
-// Check if API key is configured
+// Make sure we have an API key
 if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your-anthropic-api-key-here') {
     console.error('\n❌ ERROR: Anthropic API key not configured!');
     console.error('📝 Please add your API key to the .env file:');
@@ -32,76 +23,57 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your-an
     console.error('   3. Restart the server\n');
 }
 
-// Initialize Anthropic API client
+// Connect to Claude API
 const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY
 });
 
-// Load game generation prompts for different libraries
-// Use absolute paths based on server.js location
+// Load the instruction prompts that tell Claude how to write games
+// We have different instructions for p5.js and Phaser
 const p5jsPrompt = await readFile(join(__dirname, '../prompts/prompt-p5js.txt'), 'utf8');
 const phaserPrompt = await readFile(join(__dirname, '../prompts/prompt-phaser.txt'), 'utf8');
 const AIchatbotPrompt = await readFile(join(__dirname, '../prompts/AIchatbot-Prompts.txt'), 'utf8');
 
-// Cache the most recently generated clean code for chat context
+// Keep track of the last game we generated so the chatbot can reference it
 let TheCleanCode = "";
 
-/**
- * Removes markdown formatting from AI-generated code responses
- * Strips code blocks, bold text, headers, and excessive whitespace
- * 
- * @param {string} text - Raw markdown text from AI response
- * @returns {string} Clean JavaScript code ready for execution
- */
+// Claude sometimes wraps code in markdown formatting like ```javascript
+// This function strips all that out so we get pure code
 function stripMarkdownCodeBlocks(text) {
     return text
-        .replace(/```(?:javascript|js|typescript|ts)?\s*/gi, '')  // Remove code block starts
-        .replace(/\s*```/g, '')                                    // Remove code block ends
-        .replace(/\*\*([^*]+)\*\*/g, '$1')                        // Remove bold ** but keep text
-        .replace(/^---+$/gm, '')                                   // Remove horizontal rules ---
-        .replace(/^#+\s*/gm, '')                                   // Remove headers #
-        .replace(/\n{3,}/g, '\n\n')                               // Clean up extra newlines
+        .replace(/```(?:javascript|js|typescript|ts)?\s*/gi, '')  // Remove ```javascript
+        .replace(/\s*```/g, '')                                    // Remove closing ```
+        .replace(/\*\*([^*]+)\*\*/g, '$1')                        // Remove **bold** formatting
+        .replace(/^---+$/gm, '')                                   // Remove --- lines
+        .replace(/^#+\s*/gm, '')                                   // Remove # headers
+        .replace(/\n{3,}/g, '\n\n')                               // Clean up extra blank lines
         .trim();
 }
 
-/**
- * Generate a complete game using Claude AI with prompt caching
- * 
- * Uses ephemeral caching to speed up repeated requests with the same system prompt.
- * First call creates cache (~5s), subsequent calls use cache (~0.5s, 90% faster).
- * 
- * @param {string} description - Natural language description of the game to generate
- * @param {string} [library='p5js'] - Game library to use ('p5js' or 'phaser')
- * @returns {Promise<string>} Clean, executable JavaScript game code
- * @throws {Error} If API call fails or authentication issues occur
- * 
- * @example
- * const code = await generateGame("Make a space invaders clone", "p5js");
- */
+// This is the main function that asks Claude to generate a game
+// You give it a description like "make a pong game" and it returns code
 export async function generateGame(description, library = 'p5js') {
     try {
         console.log(`\n🤖 Asking Claude (using ${library.toUpperCase()})...\n`);
 
-        // Choose the correct system prompt based on library
+        // Pick the right instructions based on which library they chose
         const systemPrompt = library === 'phaser' ? phaserPrompt : p5jsPrompt;
 
-        // Log prompt sizes for debugging
         console.log(`📏 System prompt length: ${systemPrompt.length} characters`);
         console.log(`📏 User message length: ${description.length} characters`);
-        console.log(`📏 Total input: ${systemPrompt.length + description.length} chars`);
 
         const startTime = performance.now();
 
-        // Create API request with prompt caching enabled
-        // Cache reduces cost by ~90% and latency by ~90% on repeat calls
+        // Send the request to Claude
+        // We use caching here - first request is slow, but repeated requests are way faster
         const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-5-20250929',
-            max_tokens: 7000, // Balanced for complex games
+            model: 'claude-opus-4-7',
+            max_tokens: 7000,
             system: [
                 {
                     type: "text",
                     text: systemPrompt,
-                    cache_control: { type: "ephemeral" } // Enable caching
+                    cache_control: { type: "ephemeral" } // This makes it faster next time
                 }
             ],
             messages: [
@@ -115,7 +87,7 @@ export async function generateGame(description, library = 'p5js') {
         const endTime = performance.now();
         const apiTime = ((endTime - startTime) / 1000).toFixed(2);
 
-        // Extract text content from response blocks
+        // Pull out the actual text from Claude's response
         let response = '';
         for (const block of message.content) {
             if (block.type === 'text') {
@@ -123,10 +95,10 @@ export async function generateGame(description, library = 'p5js') {
             }
         }
 
-        // Clean markdown formatting
+        // Clean up any markdown formatting
         const cleanCode = stripMarkdownCodeBlocks(response);
 
-        // Log performance metrics
+        // Show some stats
         const usage = message.usage;
         console.log(`⏱️  Claude API time: ${apiTime}s`);
         console.log(`📊 Tokens used: ${usage.output_tokens} output`);
@@ -139,13 +111,12 @@ export async function generateGame(description, library = 'p5js') {
 
         console.log('✅ Game generated successfully!\n');
 
-        // Warn if response was truncated
+        // Let them know if the response got cut off
         if (message.stop_reason === 'max_tokens') {
             console.log('⚠️  Warning: Response may be incomplete (hit token limit)\n');
-            console.log('💡 Consider increasing max_tokens or simplifying the request\n');
         }
 
-        // Cache for chat assistant context
+        // Save this so the chatbot can help with it later
         TheCleanCode = cleanCode;
         return cleanCode;
 
@@ -155,38 +126,25 @@ export async function generateGame(description, library = 'p5js') {
     }
 }
 
-/**
- * Interactive code assistant for modifying and debugging generated games
- * 
- * Provides conversational help for editing game code, fixing bugs, and adding features.
- * Uses the most recently generated game code as context.
- * 
- * @param {string} userMessage - User's question or request about the code
- * @param {string} gameCode - Current game code (deprecated, uses cached code)
- * @param {string} library - Game library being used (deprecated, inferred from context)
- * @returns {Promise<string>} AI assistant's response with code suggestions
- * @throws {Error} If API call fails
- * 
- * @example
- * const help = await chatWithCodeAssistant("How do I make the player jump higher?");
- */
+// Chat assistant - helps users modify the game they just generated
+// Like "how do I make the player faster?" and it'll explain how
 export async function chatWithCodeAssistant(userMessage, gameCode, library) {
     try {
         console.log("\n🤖 Code Assistant request received...\n");
 
-        // Combine assistant prompt with cached game code
+        // Give Claude the chat instructions plus the game code to reference
         const PromptWithCode = AIchatbotPrompt + TheCleanCode;
         const startTime = performance.now();
 
-        // Create API request with code context cached
+        // Ask Claude for help
         const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-5-20250929',
+            model: 'claude-opus-4-7',
             max_tokens: 7000,
             system: [
                 {
                     type: "text",
                     text: PromptWithCode,
-                    cache_control: { type: "ephemeral" } // Cache code context
+                    cache_control: { type: "ephemeral" }
                 }
             ],
             messages: [
@@ -200,7 +158,7 @@ export async function chatWithCodeAssistant(userMessage, gameCode, library) {
         const endTime = performance.now();
         console.log(`⏱️  Chat response time: ${((endTime - startTime) / 1000).toFixed(2)}s`);
 
-        // Extract response text
+        // Get the response text
         let response = '';
         for (const block of message.content) {
             if (block.type === 'text') {
@@ -216,32 +174,13 @@ export async function chatWithCodeAssistant(userMessage, gameCode, library) {
     }
 }
 
-/**
- * Generate game code with real-time streaming for progressive rendering
- * 
- * Streams code generation in real-time, allowing UI to display code as it's generated.
- * Provides better user experience for long generations.
- * 
- * @param {string} description - Natural language description of the game
- * @param {string} [library='p5js'] - Game library to use ('p5js' or 'phaser')
- * @param {Function} onChunk - Callback function called for each chunk of streamed data
- * @returns {Promise<string>} Complete clean game code
- * @throws {Error} If streaming fails
- * 
- * @example
- * await generateGameStreaming("Make pong", "p5js", (data) => {
- *   if (data.type === 'chunk') {
- *     console.log(data.text); // Display progressive output
- *   } else if (data.type === 'complete') {
- *     console.log('Done!', data.code);
- *   }
- * });
- */
+// Streaming version - same as generateGame but sends code as it's being written
+// This makes it feel more responsive because you see the code appear in real-time
 export async function generateGameStreaming(description, library = 'p5js', onChunk) {
     try {
         console.log(`\n⚡ Streaming ${library.toUpperCase()} game generation...\n`);
 
-        // Select appropriate system prompt
+        // Pick the right prompt
         const systemPrompt = library === 'phaser' ? phaserPrompt : p5jsPrompt;
 
         console.log(`📏 System prompt: ${systemPrompt.length} chars`);
@@ -249,9 +188,9 @@ export async function generateGameStreaming(description, library = 'p5js', onChu
 
         const startTime = performance.now();
 
-        // Create streaming API request
+        // Start the stream
         const stream = await anthropic.messages.stream({
-            model: 'claude-sonnet-4-5-20250929',
+            model: 'claude-opus-4-7',
             max_tokens: 7000,
             system: systemPrompt,
             messages: [{ role: 'user', content: description }]
@@ -260,43 +199,42 @@ export async function generateGameStreaming(description, library = 'p5js', onChu
         let fullResponse = '';
         let chunkCount = 0;
 
-        // Handle incoming text chunks
+        // Every time we get a new chunk of text, send it to the UI
         stream.on('text', (textDelta, textSnapshot) => {
             fullResponse = textSnapshot;
             chunkCount++;
 
-            // Send chunk to callback for UI update
             if (onChunk) {
                 onChunk({
                     type: 'chunk',
-                    text: textDelta,           // New text in this chunk
-                    full: textSnapshot,         // Full text so far
+                    text: textDelta,           // Just the new bit
+                    full: textSnapshot,         // Everything so far
                     chunkNumber: chunkCount
                 });
             }
 
-            // Log progress periodically
+            // Log every 50 chunks so we know it's working
             if (chunkCount % 50 === 0) {
                 console.log(`📝 Streamed ${chunkCount} chunks...`);
             }
         });
 
-        // Wait for stream completion
+        // Wait until it's all done
         const finalMessage = await stream.finalMessage();
 
         const endTime = performance.now();
         const totalTime = ((endTime - startTime) / 1000).toFixed(2);
 
-        // Clean markdown formatting
+        // Clean up the code
         const cleanCode = stripMarkdownCodeBlocks(fullResponse);
 
-        // Log completion metrics
+        // Log how it went
         console.log(`✅ Streaming complete!`);
         console.log(`⏱️  Total time: ${totalTime}s`);
         console.log(`📊 Chunks: ${chunkCount}`);
         console.log(`📊 Tokens: ${finalMessage.usage.output_tokens}`);
 
-        // Send completion event to callback
+        // Tell the UI we're done
         if (onChunk) {
             onChunk({
                 type: 'complete',
@@ -307,12 +245,11 @@ export async function generateGameStreaming(description, library = 'p5js', onChu
             });
         }
 
-        // Warn if truncated
         if (finalMessage.stop_reason === 'max_tokens') {
             console.log('⚠️  Warning: Response may be incomplete\n');
         }
 
-        // Cache for assistant
+        // Save for the chatbot
         TheCleanCode = cleanCode;
         return cleanCode;
 
